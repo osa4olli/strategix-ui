@@ -45,7 +45,7 @@
               <div class="btn btn-primary" @click="update_structure" v-if="doc.id && doc.status === 'draft'">Update</div>
               <div class="btn btn-secondary" @click="review_structure" v-if="!doc.id || doc.status=== 'draft' || doc.status === 'structure_review'">Review</div>
               <div class="btn btn-success" @click="accept_structure" v-if="doc.status === 'structure_review'">Accept</div>
-              <div class="btn btn-danger" @click="revoke_structure" v-if="doc.status === 'structure_accepted'">Revoke</div>
+              <div class="btn btn-danger" @click="revoke_structure" v-if="doc.status === 'structure_accepted' || doc.status === 'complete'">Revoke</div>
             </span>
           </div>
         </div>
