@@ -25,7 +25,8 @@
       <div class="col-12" v-if="tab === 'structure'">
         <div class="row mt-3">
           <div class="col-12">
-          <span class="float-end">        <span class="fst-italic fas fa-spinner rotation-animation" v-if="running"></span></span>
+          <span class="float-end"><span class="fas fa-spinner fa-spin" v-if="running"></span>
+          </span>
           </div>
           <div class="col-lg-4 col-md-4 col-sm-12 col-12">
             <span class="fw-bold">Document Context</span>
@@ -53,13 +54,15 @@
       <div class="col-12" v-if="tab === 'content'">
         <div class="row">
           <div class="col-12 py-3">
-        <span class="fst-italic" v-if="running">
-          {{ current_generating_section }}
-          <i class="fas fa-spinner rotation-animation">
-          </i></span>
+            <span class="fst-italic" v-if="running">
+            {{ current_generating_section }}
+            </span>
+            <i class="ms-3 fas fa-spinner fa-spin"  v-if="running">
+            </i>
             <span class="float-end btn-group">
-              <div class="btn btn-danger" @click="cancel_generate" v-if="running">Cancel</div>
-              <div :class="'btn btn-primary ' + (running ? 'disabled' : '')" @click="generate_content" v-if="!(doc.status == 'draft' || doc.status == 'structure_review')">Generate content</div>
+              <div :class="'btn btn-primary ' + (running ? 'disabled' : '')" @click="generate_content" v-if="!(doc.status == 'draft' || doc.status == 'structure_review')"><i class="fas fa-edit"></i> Generate content</div>
+              <div :class="'btn btn-danger'" @click="clear_all_sections" v-if="!running"><i class="fas fa-trash"></i> Clear Content</div>
+              <!-- <div class="btn btn-danger" @click="cancel_generate" v-if="running">Cancel</div> -->
             </span>
           </div>
           <div class="row" v-if="doc.structure">
@@ -104,16 +107,30 @@ export default {
   },
   data() {
     return {
-      loading: false,
       running: false,
-      cancelled: false,
+      loading: false,
       tab: undefined,
       structure_feedback: undefined,
       structure_input: "",
       doc: undefined,
+      job: undefined,
       chat: [],
       input: '',
+      pollInterval: undefined,
     }
+  },
+  watch: {
+    job(newJob) {
+      if (newJob) {
+        this.startJobPolling();
+      } else {
+        clearInterval(this.pollInterval);
+        this.pollInterval = undefined;
+      }
+    }
+  },
+  beforeUnmount() {
+    clearInterval(this.pollInterval);
   },
   computed: {
     title() {
@@ -135,9 +152,9 @@ export default {
       return text;
     },
     current_generating_section() {
-      if (!this.doc || !this.doc.structure) return '';
-      const generatingSection = this.findGeneratingSection(this.doc.structure.sections);
-      return generatingSection ? `Generating content for section: ${generatingSection.title}` : '';
+      if(this.job && this.job.action) {
+        return `Current action: Generating section ${this.job.action}`;
+      }
     }
   },
   async mounted() {
@@ -159,12 +176,24 @@ export default {
       }, () => {
         this.loading = false;
       });
+      await do_get('/api/jobs/document/' + id, '', data => {
+        if(data && data.length>0) {
+          this.job = data[0];
+          this.running = this.job.status === 'running' || this.job.status === 'pending';
+        }
+        else {
+          this.running = false;
+        }
+      });
+
     }
     if(this.doc.status === 'draft') {
       this.tab = 'structure';
     } else if (this.doc.status === 'structure_review') {
       this.tab = 'structure';
     } else if (this.doc.status === 'structure_accepted') {
+      this.tab = 'content';
+    } else if (this.doc.status === 'generating') {
       this.tab = 'content';
     } else if (this.doc.status === 'complete') {
       this.tab = 'preview';
