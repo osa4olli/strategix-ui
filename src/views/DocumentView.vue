@@ -260,7 +260,7 @@ export default {
       if(!confirm('Are you sure you want to revoke structure acceptance? This will move the document back to structure review status and allow you to edit the structure again.')) return;
       do_post(`/api/documents/${this.doc.id}/revoke-structure`, null, 'error revoking structure acceptance', doc => {
         this.doc = doc;
-        this.structure_input = this.doc.structure_markdown || '';
+        this.structure_input = this.doc.original_markdown || '';
         this.doc.status = 'structure_review';
         toastify_success('Document structure acceptance revoked');
       })
@@ -273,83 +273,75 @@ export default {
         toastify_success('Document structure accepted');
       })
     },
-    async generate_single_section(section) {
+    generate_single_section(section) {
       if (this.running) return;
       this.running = true;
-      this.cancelled = false;
-      try {
-        section.status = 'generating';
-        await do_post(`/api/documents/${this.doc.id}/sections/${section.id}/generate`, null, 'error generating content for section ' + section.title, response => {
-          section.generated_text = response.generated_text;
-          section.status = 'done';
-          toastify_success('Content generated for: ' + section.title);
-        });
-      } catch (e) {
-        toastify_error('error generating content for section ' + section.title + '\n' + e.message);
-        section.status = 'empty';
-      } finally {
+      section.status = 'generating';
+      do_post(`/api/documents/${this.doc.id}/sections/${section.id}/generate`, null, 'error generating content for section ' + section.title, job => {
+        this.job = job;
+        toastify_success('Content generation started for: ' + section.title);
+      }, () => {
         this.running = false;
-        this.cancelled = false;
-      }
+        section.status = 'empty';
+      });
     },
     cancel_generate() {
-      this.cancelled = true;
+      do_post('/api/jobs/' + this.job.job_id + '/cancel', null, 'error cancelling job', () => {
+        toastify_success('Content generation cancelled');
+      });
+      this.running = false;
     },
-    async generate_section(section) {
-      if (this.cancelled) return;
-      if (section.generated_text) {
-        console.log("skipping generated text for section " + section.title);
-      } else {
-        console.log("generating content for section " + section);
-        section.status = 'generating';
-        await do_post(`/api/documents/${this.doc.id}/sections/${section.id}/generate`, null, 'error generating content for section ' + section.title, response => {
-          section.generated_text = response.generated_text;
-          section.status = 'done';
+    generate_content() {
+      do_post('/api/documents/' + this.doc.id + '/generate-all', null, 'error submitting content for document', job => {
+        this.running = true;
+        this.job = job;
+        toastify_success('Content generation started for document: ' + this.doc.title);
+      });
+    },
+    clear_all_sections() {
+      if (this.running) return;
+      if (!confirm('Are you sure you want to clear the content of all sections?')) return;
+      const clearSections = (sections) => {
+        for (const section of sections) {
+          if (section.generated_text) {
+            this.empty_section(section);
+          }
+          if (section.children) {
+            clearSections(section.children);
+          }
+        }
+      };
+      clearSections(this.doc.structure.sections);
+    },
+    startJobPolling() {
+      clearInterval(this.pollInterval);
+      this.pollInterval = setInterval(async () => {
+        if (!this.job) {
+          clearInterval(this.pollInterval);
+          this.pollInterval = undefined;
+          return;
+        }
+        await do_get(`/api/jobs/${this.job.job_id}`, 'error polling job status', data => {
+          this.job = data;
+          if (data.status === 'completed' || data.status === 'failed') {
+            clearInterval(this.pollInterval);
+            this.pollInterval = undefined;
+            this.running = false;
+            this.job = undefined;
+            // reload document to get updated section content
+            do_get('/api/documents/' + this.doc.id, 'error fetching document', doc => {
+              this.doc = doc;
+              toastify_success('Content generation completed');
+            });
+          }
+          else if(data.status === 'running' || data.status === 'pending') {
+            this.running = true;
+          }
         });
-      }
-      if (section.children) {
-        for (var idx in section.children) {
-          if (this.cancelled) return;
-          await this.generate_section(section.children[idx]);
-        }
-      }
-    },
-    async generate_content() {
-      this.running = true;
-      this.cancelled = false;
-      try {
-        for (var idx in this.doc.structure.sections) {
-          if (this.cancelled) break;
-          try {
-            await this.generate_section(this.doc.structure.sections[idx]);
-          } catch (e) {
-            toastify_error('error generating content for section ' + section.title + '\n' + e.message);
-            console.error("error generating content for section " + section.title, e);
-          }
-        }
-      } catch (e) {
-        toastify_error('error generating content for document\n' + e.message);
-        console.error("error generating content for document", e);
-      } finally {
-        this.running = false;
-        this.cancelled = false;
-      }
-    },
-    findGeneratingSection(sections) {
-      for (const section of sections) {
-        if (section.status === 'generating') {
-          return section;
-        }
-        if (section.children) {
-          const generatingChild = this.findGeneratingSection(section.children);
-          if (generatingChild) {
-            return generatingChild;
-          }
-        }
-      }
-      return null;
+      }, 10000);
     }
   }
 }
 </script>
+
 
