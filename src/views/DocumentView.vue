@@ -54,11 +54,14 @@
       <div class="col-12" v-if="tab === 'content'">
         <div class="row">
           <div class="col-12 py-3">
-            <span class="fst-italic" v-if="running">
-            {{ current_generating_section }}
-            </span>
-            <i class="ms-3 fas fa-spinner fa-spin"  v-if="running">
-            </i>
+            <div v-if="job && (job.status === 'pending' || job.status === 'running')" class="alert alert-info py-2 px-3 mb-2 d-flex align-items-center gap-2">
+              <i class="fas fa-spinner fa-spin me-2"></i>
+              <span>
+                <span class="fw-semibold">{{ job.status === 'pending' ? 'Pending' : 'Running' }}:</span>
+                <span v-if="job.type" class="ms-1 badge bg-secondary">{{ job.type }}</span>
+                <span v-if="job.action" class="ms-1 text-muted small">{{ job.action }}</span>
+              </span>
+            </div>
             <span class="float-end btn-group">
               <div :class="'btn btn-primary ' + (running ? 'disabled' : '')" @click="generate_content" v-if="!(doc.status == 'draft' || doc.status == 'structure_review')"><i class="fas fa-edit"></i> Generate content</div>
               <div :class="'btn btn-danger'" @click="clear_all_sections" v-if="!running"><i class="fas fa-trash"></i> Clear Content</div>
@@ -77,6 +80,7 @@
                 @empty-section="empty_section"
                 @accept-section="accept_section"
                 @generate-section="generate_single_section"
+                @generate-diagram="generate_diagram"
               />
             </div>
           </div>
@@ -151,9 +155,9 @@ export default {
       this.doc.structure.sections.forEach(section => appendSectionText(section, 0));
       return text;
     },
-    current_generating_section() {
+    current_running_job() {
       if(this.job && this.job.action) {
-        return `Current action: Generating section ${this.job.action}`;
+        return `Current action: ${this.job.type} ${this.job.action}`;
       }
     }
   },
@@ -183,6 +187,7 @@ export default {
         }
         else {
           this.running = false;
+          this.resetGeneratingSections(this.doc.structure?.sections || []);
         }
       });
 
@@ -202,6 +207,16 @@ export default {
     }
   },
   methods: {
+    resetGeneratingSections(sections) {
+      for (const section of sections) {
+        if (section.status === 'generating') {
+          section.status = 'empty';
+        }
+        if (section.children) {
+          this.resetGeneratingSections(section.children);
+        }
+      }
+    },
     review_structure(evt) {
       evt.preventDefault();
       this.running = true;
@@ -283,6 +298,16 @@ export default {
       }, () => {
         this.running = false;
         section.status = 'empty';
+      });
+    },
+    generate_diagram(section) {
+      if (this.running) return;
+      this.running = true;
+      do_post(`/api/documents/${this.doc.id}/sections/${section.id}/generate-diagram`, null, 'error generating diagram for section ' + section.title, job => {
+        this.job = job;
+        toastify_success('Diagram generation started for: ' + section.title);
+      }, () => {
+        this.running = false;
       });
     },
     cancel_generate() {

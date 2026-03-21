@@ -40,6 +40,22 @@
             <VueShowdown :markdown="section.generated_text" />
           </div>
 
+          <!-- Mermaid diagram -->
+          <div v-if="section.mermaid" class="mt-3">
+            <div class="d-flex align-items-center mb-1">
+              <span class="fw-semibold me-2 small text-muted">Diagram</span>
+              <button class="btn btn-sm btn-outline-secondary py-0 px-1 ms-auto" @click.prevent="toggleMermaidSource" :title="showMermaidSource ? 'Show diagram' : 'Show Mermaid source'">
+                <i :class="showMermaidSource ? 'fas fa-image' : 'fas fa-code'"></i>
+              </button>
+            </div>
+            <pre v-if="showMermaidSource" class="bg-light p-2 rounded small">{{ section.mermaid }}</pre>
+            <div v-else>
+              <img v-if="diagramUrl" :src="diagramUrl" class="img-fluid border rounded" alt="Mermaid diagram" />
+              <div v-else-if="diagramLoading" class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Rendering diagram…</div>
+              <div v-else-if="diagramError" class="alert alert-danger small py-1">{{ diagramError }}</div>
+            </div>
+          </div>
+
           <!-- Hints -->
           <div class="mt-2">
             <div class="d-flex align-items-center mb-1" v-if="editingHints">
@@ -75,6 +91,14 @@
               >
                 <i class="fas fa-magic"></i> Generate
               </button>
+              <button
+                class="btn btn-sm btn-outline-info"
+                :disabled="running || section.status === 'generating'"
+                @click.prevent="$emit('generate-diagram', section)"
+                title="Generate Mermaid diagram for this section"
+              >
+                <i class="fas fa-project-diagram"></i> Diagram
+              </button>
               <button class="btn btn-sm btn-primary" v-if="section.status === 'done'" @click.prevent="$emit('accept-section', section)">
                 <i class="fas fa-check"></i> Accept
               </button>
@@ -100,6 +124,7 @@
               @empty-section="$emit('empty-section', $event)"
               @accept-section="$emit('accept-section', $event)"
               @generate-section="$emit('generate-section', $event)"
+              @generate-diagram="$emit('generate-diagram', $event)"
             />
           </div>
         </div>
@@ -132,13 +157,63 @@ export default {
       default: false
     }
   },
-  emits: ["empty-section", "accept-section", "generate-section"],
+  emits: ["empty-section", "accept-section", "generate-section", "generate-diagram"],
   data() {
     return {
       isOpen: this.initiallyOpen,
       chatOpen: false,
-      editingHints: false
+      editingHints: false,
+      showMermaidSource: false,
+      diagramUrl: null,
+      diagramLoading: false,
+      diagramError: null
     };
+  },
+  watch: {
+    'section.mermaid': {
+      immediate: true,
+      handler(newVal) {
+        if (newVal) {
+          this.renderDiagram(newVal);
+        } else {
+          this.diagramUrl = null;
+        }
+      }
+    }
+  },
+  methods: {
+    toggleMermaidSource() {
+      this.showMermaidSource = !this.showMermaidSource;
+    },
+    async renderDiagram(mermaidText) {
+      this.diagramLoading = true;
+      this.diagramError = null;
+      this.diagramUrl = null;
+      try {
+        const response = await fetch('/api/diagrams/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: mermaidText
+        });
+        if (!response.ok) {
+          const msg = await response.text();
+          this.diagramError = 'Failed to render diagram: ' + msg;
+        } else {
+          const buffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          const base64 = btoa(binary);
+          this.diagramUrl = `data:image/png;base64,${base64}`;
+        }
+      } catch (e) {
+        this.diagramError = 'Failed to render diagram: ' + e.message;
+      } finally {
+        this.diagramLoading = false;
+      }
+    }
   }
 };
 </script>

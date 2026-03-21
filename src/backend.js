@@ -30,16 +30,21 @@ function do_request(method, url, body, errormsg, callback, finallyBlock, headers
             } else if (resp.status === 200 || resp.status === 201 || resp.status === 202) {
                 return resp.json();
             } else {
-                return resp.json().then(obj => {
-                    console.log(obj);
-                    if(errormsg) {
-                        toast(errormsg + ': ' + JSON.stringify(obj), {
-                            autoClose: 1000,
-                            type: "error"
-                        });
-                    }
-                    throw new Error(errormsg);
-                });
+                if(resp.headers.get('Content-Type') && resp.headers.get('Content-Type').includes('application/json')) {
+                    return resp.json().then(obj => {
+                        console.log(obj);
+                        if (errormsg) {
+                            toast(errormsg + ': ' + JSON.stringify(obj), {
+                                autoClose: 1000,
+                                type: "error"
+                            });
+                        }
+                        throw new Error(errormsg);
+                    });
+                }
+                else {
+                    return resp.body;
+                }
             }
         })
         .then(data => {
