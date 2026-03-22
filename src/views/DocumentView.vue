@@ -275,7 +275,7 @@ export default {
       if(!confirm('Are you sure you want to revoke structure acceptance? This will move the document back to structure review status and allow you to edit the structure again.')) return;
       do_post(`/api/documents/${this.doc.id}/revoke-structure`, null, 'error revoking structure acceptance', doc => {
         this.doc = doc;
-        this.structure_input = this.doc.original_markdown || '';
+        this.structure_input = this.doc.structure_markdown || '';
         this.doc.status = 'structure_review';
         toastify_success('Document structure acceptance revoked');
       })
