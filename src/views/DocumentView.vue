@@ -337,6 +337,7 @@ export default {
         }
       };
       clearSections(this.doc.structure.sections);
+      this.doc.status = 'structure_accepted';
     },
     startJobPolling() {
       clearInterval(this.pollInterval);
